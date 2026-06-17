@@ -22,13 +22,35 @@ class TikTokScraper(BaseScraper):
             )
             return result
 
-        try:
-            posts, errors = asyncio.run(self._scrape_all(query))
-            result.posts = self._dedupe_posts(posts)[: query.max_results]
-            result.errors.extend(errors)
-        except Exception as exc:
-            result.errors.append(f"TikTok API error: {exc}")
+        all_posts: list[Post] = []
 
+        while True:
+            try:
+                posts, errors = asyncio.run(self._scrape_all(query))
+                all_posts = self._dedupe_posts(all_posts + posts)
+                result.errors.extend(errors)
+            except Exception as exc:
+                result.errors.append(f"TikTok API error: {exc}")
+                break
+
+            got = len(all_posts)
+            if got >= query.max_results:
+                break
+
+            print(
+                f"  [tiktok] Dapat {got}/{query.max_results} hasil. "
+                "Token mungkin kurang fresh.",
+                flush=True,
+            )
+            new_token = input(
+                "  Masukkan ms_token baru (atau tekan Enter untuk skip): "
+            ).strip()
+            if not new_token:
+                break
+
+            cfg.ms_token = new_token
+
+        result.posts = all_posts[: query.max_results]
         return result
 
     async def _scrape_all(self, query: ScrapeQuery) -> tuple[list[Post], list[str]]:
@@ -42,6 +64,7 @@ class TikTokScraper(BaseScraper):
                 num_sessions=1,
                 sleep_after=3,
                 browser=cfg.browser,
+                headless=cfg.headless,
             )
 
             for hashtag in query.normalized_hashtags():
@@ -84,7 +107,7 @@ class TikTokScraper(BaseScraper):
     ) -> list[Post]:
         posts: list[Post] = []
 
-        async for video in api.search.videos(keyword, count=max_results):
+        async for video in api.search.search_type(keyword, "item", count=max_results):
             posts.append(self._post_from_video(video.as_dict))
 
         return posts
@@ -96,7 +119,7 @@ class TikTokScraper(BaseScraper):
         search_term = f"{location} place"
         count = 0
 
-        async for video in api.search.videos(search_term, count=max_results * 2):
+        async for video in api.search.search_type(search_term, "item", count=max_results * 2):
             data = video.as_dict
             poi_name = self._extract_poi_name(data)
             desc = (data.get("desc") or "").lower()

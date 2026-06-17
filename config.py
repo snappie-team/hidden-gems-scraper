@@ -20,6 +20,7 @@ class InstagramConfig:
 class TikTokConfig:
     ms_token: str = os.getenv("TIKTOK_MS_TOKEN", "")
     browser: str = os.getenv("TIKTOK_BROWSER", "chromium")
+    headless: bool = os.getenv("TIKTOK_HEADLESS", "true").lower() != "false"
 
 
 @dataclass
